@@ -53,6 +53,7 @@ try:
     from pygame.locals import K_d
     from pygame.locals import K_s
     from pygame.locals import K_w
+    from pygame.locals import K_p
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -92,8 +93,8 @@ def get_vehicle_class(vehicles, json_path=None):
     return class_list
 
 def save_output(carla_img, bboxes, vehicle_class):
-    image_folder='out_rgb'
-    txt_folder='out_bbox'
+    image_folder='/home/bikram/Desktop/BIkram_carla/Spatial_windscreen/out_rgb'
+    txt_folder='/home/bikram/Desktop/BIkram_carla/Spatial_windscreen/out_bbox'
     if not os.path.exists(os.path.dirname(image_folder)):
         os.makedirs(os.path.dirname(image_folder))
         
@@ -126,7 +127,7 @@ class ClientSideBoundingBoxes(object):
     """
 
     @staticmethod
-    def get_bounding_boxes(vehicles, camera,carla_rgb):
+    def get_bounding_boxes(vehicles, self_car,camera,carla_rgb):
         """
         Creates 3D bounding boxes based on carla vehicle list and camera.
         """
@@ -135,7 +136,8 @@ class ClientSideBoundingBoxes(object):
         filtered_vehicles = []
         filtered_bounding_boxes = []
         for vehicle, bb in zip(vehicles, bounding_boxes):
-            if all(bb[:, 2] > 0):
+            dist = vehicle.get_transform().location.distance(self_car.get_transform().location)
+            if all(bb[:, 2] > 0)and dist <50:
                 filtered_vehicles.append(vehicle)
                 filtered_bounding_boxes.append(bb)
                 
@@ -348,6 +350,8 @@ class BasicSynchronousClient(object):
 
         control = car.get_control()
         control.throttle = 0
+        if keys[K_p]:
+            car.set_autopilot(True)
         if keys[K_w]:
             control.throttle = 1
             control.reverse = False
@@ -419,7 +423,7 @@ class BasicSynchronousClient(object):
                 pygame_clock.tick_busy_loop(20)
 
                 self.render(self.display)
-                bounding_boxes = ClientSideBoundingBoxes.get_bounding_boxes(vehicles, self.camera, self.image)
+                bounding_boxes = ClientSideBoundingBoxes.get_bounding_boxes(vehicles, self.car, self.camera, self.image)
                 ClientSideBoundingBoxes.draw_bounding_boxes(self.display, bounding_boxes)
 
                 pygame.display.flip()
