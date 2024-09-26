@@ -69,6 +69,62 @@ VIEW_FOV = 90
 
 BB_COLOR = (248, 64, 24)
 
+import numpy as np
+
+def iou(box1, box2):
+    """
+    Compute the Intersection over Union (IoU) of two bounding boxes.
+    Each box is represented as [min_x, min_y, max_x, max_y].
+    """
+    x1 = max(box1[0], box2[0])
+    y1 = max(box1[1], box2[1])
+    x2 = min(box1[2], box2[2])
+    y2 = min(box1[3], box2[3])
+
+    # Compute the area of overlap
+    overlap_area = max(0, x2 - x1) * max(0, y2 - y1)
+
+    # Compute the area of both bounding boxes
+    box1_area = (box1[2] - box1[0]) * (box1[3] - box1[1])
+    box2_area = (box2[2] - box2[0]) * (box2[3] - box2[1])
+
+    # Compute the intersection over union
+    union_area = box1_area + box2_area - overlap_area
+    iou_value = overlap_area / union_area
+
+    return iou_value
+
+def filter_overlapping_boxes(bounding_boxes, vehicle_classes, iou_threshold=0.5):
+    """
+    Filters out overlapping or concentric bounding boxes based on IoU.
+    Keeps only the outermost bounding box.
+    """
+    filtered_bboxes = []
+    filtered_classes = []
+
+    # Track the indices of bounding boxes to keep
+    keep_indices = []
+
+    for i, bbox1 in enumerate(bounding_boxes):
+        keep = True
+        for j, bbox2 in enumerate(bounding_boxes):
+            if i != j:
+                if iou(bbox1, bbox2) > iou_threshold:
+                    # If bbox1 is smaller, mark it for removal
+                    bbox1_area = (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
+                    bbox2_area = (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
+                    if bbox1_area < bbox2_area:
+                        keep = False
+                        break
+        if keep:
+            keep_indices.append(i)
+
+    # Filter out the bounding boxes and classes based on the keep_indices
+    for idx in keep_indices:
+        filtered_bboxes.append(bounding_boxes[idx])
+        filtered_classes.append(vehicle_classes[idx])
+
+    return filtered_bboxes, filtered_classes
 # ==============================================================================
 # -- ClientSideBoundingBoxes ---------------------------------------------------
 # ==============================================================================
@@ -137,14 +193,16 @@ class ClientSideBoundingBoxes(object):
         filtered_bounding_boxes = []
         for vehicle, bb in zip(vehicles, bounding_boxes):
             dist = vehicle.get_transform().location.distance(self_car.get_transform().location)
-            if all(bb[:, 2] > 0)and dist <50:
+            if all(bb[:, 2] > 0)and dist <25:
                 filtered_vehicles.append(vehicle)
                 filtered_bounding_boxes.append(bb)
                 
         bounding_boxes_2d = [p3d_to_p2d_bb(bbox) for bbox in filtered_bounding_boxes]
         vehicle_class = get_vehicle_class(filtered_vehicles, '/home/bikram/Desktop/carla/PythonAPI/examples/vehicle_class_json_file.txt')
         # filtered_out,removed_out=filter_occlusion_bbox(bounding_boxes_2d,vehicles,camera,vehicle_class)
-        save_output(carla_rgb,bounding_boxes_2d,vehicle_class)
+        if(len(bounding_boxes_2d)>0):
+            bounding_boxes_2d, vehicle_class = filter_overlapping_boxes(bounding_boxes_2d, vehicle_class)
+            save_output(carla_rgb,bounding_boxes_2d,vehicle_class)
 
         return bounding_boxes
 
@@ -406,6 +464,7 @@ class BasicSynchronousClient(object):
             self.client = carla.Client('127.0.0.1', 2000)
             self.client.set_timeout(2.0)
             self.world = self.client.get_world()
+            self.world.set_weather(carla.WeatherParameters.WetCloudyNoon)
 
             self.setup_car()
             self.setup_camera()
